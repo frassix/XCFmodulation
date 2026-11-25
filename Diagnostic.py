@@ -1,50 +1,38 @@
+"""Quick diagnostic of one run: standard maps, Q/U maps and q/u distributions before and after the 7 mm edge cut."""
 import argparse
-import numpy as np
 
-from matplotlib import pyplot as plt
-from XCFreader import GRun
-from XCFGraph import GFigure, GPDMaps
 from scipy.ndimage import gaussian_filter
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--inFile", type=str, help = "Path to fits files", required=True)
+from XCFGraph import GFigure, GPDMaps
+from XCFreader import GRun
+
+parser = argparse.ArgumentParser(description='Diagnostic plots of one run.')
+parser.add_argument("--inFile", type=str, help="Path to fits file or directory", required=True)
 args = parser.parse_args()
 
 Run = GRun(args.inFile)
 StdMaps = GPDMaps(Run)
 StdMaps(True, f'{args.inFile} maps')
 
-Q = Run.GetQMap()
-U = Run.GetUMap()
-q = Run.GetQ()
-u = Run.GetU()
+Q, U = Run.GetQMap(), Run.GetUMap()
+q, u = Run.GetQ(), Run.GetU()
 Run.CutTheEdges()
-Q_cutted = Run.GetQMap()
-U_cutted = Run.GetUMap()
-q_cutted = Run.GetQ()
-u_cutted = Run.GetU()
+Q_cutted, U_cutted = Run.GetQMap(), Run.GetUMap()
+q_cutted, u_cutted = Run.GetQ(), Run.GetU()
 
-QUCanvas = GFigure(1,2)
-mapQ = QUCanvas.AddMap(gaussian_filter(Q, sigma=1), vmin=-2., vmax=2., lim=7.5, position=0)
-QUCanvas.AddMap(gaussian_filter(Q_cutted, sigma=1), vmin=-2., vmax=2., lim=7., position=0)
-QUCanvas.AddColorBar(mapQ, 'Q', position=0)
-QUCanvas.AxesLabels(xlabel='X [mm]', ylabel='Y [mm]', position=0)
-QUCanvas.SetTitle(r'$Q_{sp}$', position=0)
-mapU = QUCanvas.AddMap(gaussian_filter(U, sigma=1), vmin=-2., vmax=2., lim=7.5, position=1)
-QUCanvas.AddMap(gaussian_filter(Q_cutted, sigma=1), vmin=-2., vmax=2., lim=7., position=1)
-QUCanvas.AddColorBar(mapU, 'U', position=1)
-QUCanvas.AxesLabels(xlabel='X [mm]', ylabel='Y [mm]', position=1)
-QUCanvas.SetTitle(r'$U_{sp}$', position=1)
+QUCanvas = GFigure(1, 2)
+for position, (name, full, cutted) in enumerate((('Q', Q, Q_cutted), ('U', U, U_cutted))):
+    mapId = QUCanvas.AddMap(gaussian_filter(full, sigma=1), vmin=-2., vmax=2., lim=7.5, position=position)
+    QUCanvas.AddMap(gaussian_filter(cutted, sigma=1), vmin=-2., vmax=2., lim=7., position=position)
+    QUCanvas.AddColorBar(mapId, name, position=position)
+    QUCanvas.AxesLabels(xlabel='X [mm]', ylabel='Y [mm]', position=position)
+    QUCanvas.SetTitle(rf'${name}_{{sp}}$', position=position)
 
-QCanvas = GFigure(1,2)
-QCanvas.AddHist(q, 200, [-2.,2.], label=r'$q_i$ [-7.5,7.5]', position=0)
-QCanvas.AddHist(q_cutted, 200, [-2., 2.], label=r'$q_i$ [-7,7]', position=0)
-QCanvas.AxesLabels(xlabel=r'$q_{i}$', ylabel='counts', position=0)
-QCanvas.SetTitle(r'$q_{i}$', position=0)
-QCanvas.AddHist(u, 200, [-2.,2.], label=r'$u_i$ [-7.5,7.5]', position=1)
-QCanvas.AddHist(u_cutted, 200, [-2., 2.], label=r'$u_i$ [-7,7]', position=1)
-QCanvas.AxesLabels(xlabel=r'$u_{i}$', ylabel='counts', position=1)
-QCanvas.SetTitle(r'$u_{i}$', position=1)
-QCanvas.TurnOnLegend(0)
-QCanvas.TurnOnLegend(1)
+QCanvas = GFigure(1, 2)
+for position, (name, full, cutted) in enumerate((('q', q, q_cutted), ('u', u, u_cutted))):
+    QCanvas.AddHist(full, 200, [-2., 2.], label=rf'${name}_i$ [-7.5,7.5]', position=position)
+    QCanvas.AddHist(cutted, 200, [-2., 2.], label=rf'${name}_i$ [-7,7]', position=position)
+    QCanvas.AxesLabels(xlabel=rf'${name}_{{i}}$', ylabel='counts', position=position)
+    QCanvas.SetTitle(rf'${name}_{{i}}$', position=position)
+    QCanvas.TurnOnLegend(position)
 QUCanvas.GDraw()

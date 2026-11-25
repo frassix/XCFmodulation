@@ -1,92 +1,66 @@
+"""Compares two spurious maps (e.g. low and high rate): ratios, Z compatibility and Q/U/M distributions."""
 import argparse
+
 import numpy as np
-from matplotlib import pyplot as plt
+
 from XCFGraph import GFigure
 from XCFgpd import GPD
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--map1", type=str, help = "Path to first map", required=True)
-parser.add_argument("--map2", type=str, help = "Path to second map", required=True)
+parser = argparse.ArgumentParser(description='Compare two spurious map files.')
+parser.add_argument("--map1", type=str, help="Path to first map (low rate)", required=True)
+parser.add_argument("--map2", type=str, help="Path to second map (high rate)", required=True)
 args = parser.parse_args()
 
 gpd1 = GPD()
 gpd1.ReadSpurious(args.map1)
-q1 = gpd1.GetQ()
-u1 = gpd1.GetU()
-q1_err = gpd1.GetQerr()
-u1_err = gpd1.GetUerr()
 gpd2 = GPD()
 gpd2.ReadSpurious(args.map2)
-q2 = gpd2.GetQ()
-u2 = gpd2.GetU()
-q2_err = gpd2.GetQerr()
-u2_err = gpd2.GetUerr()
+q1, u1, q1_err, u1_err = gpd1.GetQ(), gpd1.GetU(), gpd1.GetQerr(), gpd1.GetUerr()
+q2, u2, q2_err, u2_err = gpd2.GetQ(), gpd2.GetU(), gpd2.GetQerr(), gpd2.GetUerr()
 M1 = np.sqrt(q1**2 + u1**2)
 M2 = np.sqrt(q2**2 + u2**2)
 
-r_q = np.abs(q1/q2)
-r_u = np.abs(u1/u2)
+with np.errstate(divide='ignore', invalid='ignore'):
+    r_q = np.abs(q1/q2)
+    r_u = np.abs(u1/u2)
+    r_qerr = np.sqrt((q1_err/q2)**2 + (q1*q2_err/(q2**2))**2)
+    r_uerr = np.sqrt((u1_err/u2)**2 + (u1*u2_err/(u2**2))**2)
+    Zq = np.abs(r_q - 1)/r_qerr
+    Zu = np.abs(r_u - 1)/r_uerr
+    r_M = M1/M2
 
-RCanvas = GFigure(1,2)
-qm = RCanvas.AddMap(r_q, vmin=0., vmax=2., lim=7.5, position=0)
-RCanvas.AddColorBar(qm, 'Qlow/Qhigh', position=0)
-RCanvas.AxesLabels(xlabel='X [mm]', ylabel='Y [mm]', position=0)
-RCanvas.SetTitle(r'$Q_{low}\, vs\,Q_{high}$', position=0)
+RCanvas = GFigure(1, 2)
+DCanvas = GFigure(1, 2)
+ZCanvas = GFigure(1, 2)
+for position, (S, r, Z, low, high) in enumerate((('Q', r_q, Zq, q1, q2), ('U', r_u, Zu, u1, u2))):
+    mapId = RCanvas.AddMap(r, vmin=0., vmax=2., lim=7.5, position=position)
+    RCanvas.AddColorBar(mapId, f'{S}low/{S}high', position=position)
+    RCanvas.AxesLabels(xlabel='X [mm]', ylabel='Y [mm]', position=position)
+    RCanvas.SetTitle(rf'${S}_{{low}}\, vs\,{S}_{{high}}$', position=position)
 
-um = RCanvas.AddMap(r_u, vmin=0., vmax=2., lim=7.5, position=1)
-RCanvas.AddColorBar(um, 'Ulow/Uhigh', position=1)
-RCanvas.AxesLabels(xlabel='X [mm]', ylabel='Y [mm]', position=1)
-RCanvas.SetTitle(r'$U_{low}\, vs\, U_{high}$', position=1)
+    DCanvas.AddHist(low, 200, [-1., 1.], label=f'low rate {S}', normalized=True, position=position)
+    DCanvas.AddHist(high, 200, [-1., 1.], label=f'high rate {S}', normalized=True, position=position)
+    DCanvas.AxesLabels(xlabel=S, ylabel='Normalized Entries', position=position)
+    DCanvas.SetTitle(f'{S} distribution', position=position)
+    DCanvas.TurnOnLegend(position=position)
 
-r_qerr = np.sqrt( (q1_err/q2)**2 + (q1*q2_err/(q2**2))**2 )
-r_uerr = np.sqrt( (u1_err/u2)**2 + (u1*u2_err/(u2**2))**2 )
-Zq = np.abs(r_q - 1)/r_qerr
-Zu = np.abs(r_u - 1)/r_uerr
+    mapId = ZCanvas.AddMap(Z, vmin=0., vmax=1.96, lim=7.5, position=position)
+    ZCanvas.AddColorBar(mapId, 'Z', position=position)
+    ZCanvas.AxesLabels(xlabel='X [mm]', ylabel='Y [mm]', position=position)
+    ZCanvas.SetTitle(rf'${S}_{{low}}\, vs\,{S}_{{high}}$ compatibility', position=position)
 
-DCanvas = GFigure(1,2)
-q1.reshape(300*300)
-q2.reshape(300*300)
-u1.reshape(300*300)
-u2.reshape(300*300)
-DCanvas.AddHist(q1, 200, [-1., 1.], label='low rate Q', normalized=True, position=0)
-DCanvas.AddHist(q2, 200, [-1., 1.], label='high rate Q', normalized=True, position=0)
-DCanvas.AddHist(u1, 200, [-1., 1.], label='low rate U', normalized=True, position=1)
-DCanvas.AddHist(u2, 200, [-1., 1.], label='high rate U', normalized=True, position=1)
-DCanvas.AxesLabels(xlabel='Q', ylabel='Normalized Entries', position=0)
-DCanvas.AxesLabels(xlabel='U', ylabel='Normalized Entries', position=1)
-DCanvas.SetTitle('Q distribution', position=0)
-DCanvas.SetTitle('U distribution', position=1)
-DCanvas.TurnOnLegend(position=0)
-DCanvas.TurnOnLegend(position=1)
-
-ZCanvas = GFigure(1,2)
-qz = ZCanvas.AddMap(Zq, vmin=0., vmax=1.96, lim=7.5, position=0)
-ZCanvas.AddColorBar(qz, 'Z', position=0)
-ZCanvas.AxesLabels(xlabel='X [mm]', ylabel='Y [mm]', position=0)
-ZCanvas.SetTitle(r'$Q_{low}\, vs\,Q_{high}$ compatibility', position=0)
-
-uz = ZCanvas.AddMap(Zu, vmin=0., vmax=1.96, lim=7.5, position=1)
-ZCanvas.AddColorBar(uz, 'Z', position=1)
-ZCanvas.AxesLabels(xlabel='X [mm]', ylabel='Y [mm]', position=1)
-ZCanvas.SetTitle(r'$U_{low}\, vs\, U_{high}$ compatibility', position=1)
-
-print(f'Compatible Q bins: {len(Zq[np.where(Zq>1.96)])}')
-print(f'Compatible U bins: {len(Zu[np.where(Zu>1.96)])}')
+print(f'Incompatible Q bins (Z>1.96): {np.count_nonzero(Zq > 1.96)}')
+print(f'Incompatible U bins (Z>1.96): {np.count_nonzero(Zu > 1.96)}')
 
 ModulationCanvas = GFigure(1, 2)
-mapM = ModulationCanvas.AddMap(M1/M2, vmin=0., vmax=2, lim=7.5, position=0)
+mapM = ModulationCanvas.AddMap(r_M, vmin=0., vmax=2, lim=7.5, position=0)
 ModulationCanvas.AddColorBar(mapM, r'$M_{low}/M_{high}$', position=0)
 ModulationCanvas.AxesLabels(xlabel='X [mm]', ylabel='Y [mm]', position=0)
 ModulationCanvas.SetTitle(r'$M_{low} vs M_{high}$', position=0)
-
-M1_cutted = ModulationCanvas.EdgeCut(M1, 7)
-M2_cutted = ModulationCanvas.EdgeCut(M2, 7)
-ModulationCanvas.AddHist(M1_cutted, 150, [0., 2.], label='Low rate Modulation', normalized=True, position=1)
-ModulationCanvas.AddHist(M2_cutted, 150, [0., 2.], label='High rate Modulation', normalized=True, position=1)
+ModulationCanvas.AddHist(ModulationCanvas.EdgeCut(M1, 7), 150, [0., 2.], label='Low rate Modulation', normalized=True, position=1)
+ModulationCanvas.AddHist(ModulationCanvas.EdgeCut(M2, 7), 150, [0., 2.], label='High rate Modulation', normalized=True, position=1)
 ModulationCanvas.AxesLabels(xlabel='M', ylabel='Entries', position=1)
 ModulationCanvas.SetTitle('M distribution', position=1)
 ModulationCanvas.TurnOnLegend(position=1)
-ModulationCanvas.AxesLimits([0,2.], [None, None], 1)
+ModulationCanvas.AxesLimits([0, 2.], [None, None], 1)
 RCanvas.GDraw()
-
-
