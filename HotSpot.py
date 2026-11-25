@@ -42,11 +42,11 @@ par_gs_90, cov_gs_90, _, chi_gs_90 = run_90.CutUnderPeak()
 par_xy_00, _, gaussian, chi_xy_00 = run_00.FindGaussCenter()
 par_xy_90, _,        _, chi_xy_90 = run_90.FindGaussCenter()
 
-# Ellipse: mean centre of the two runs; semi-axes mix X of one run with Y of the other (as in the original analysis)
+# Ellipse: centre and semi-axes are the means of the gaussian fits of the two runs (X with X, Y with Y)
 xc = (par_xy_00[0][1] + par_xy_90[0][1])/2
 yc = (par_xy_00[1][1] + par_xy_90[1][1])/2
-a = (par_xy_00[0][2] + par_xy_90[1][2])/2.
-b = (par_xy_00[1][2] + par_xy_90[0][2])/2.
+a = (par_xy_00[0][2] + par_xy_90[0][2])/2.
+b = (par_xy_00[1][2] + par_xy_90[1][2])/2.
 
 run_00.EllipticCut(xc, yc, a, b)
 run_90.EllipticCut(xc, yc, a, b)

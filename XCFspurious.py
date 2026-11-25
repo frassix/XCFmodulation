@@ -152,7 +152,7 @@ class SpuriousMap():
         useful = [par_00[1]-par_00[2], par_00[1]+par_00[2]]
         hdr = fits.Header()
         hdr['GPD_NUM'] = numGPD
-        hdr['PHA_BIN'] = "PHI_MIN, PHI_MAX"
+        hdr['PHA_BIN'] = "PHA_MIN, PHA_MAX"
         hdr['Comment'] = 'Q and U spurious map'
 
         hdul = fits.HDUList([

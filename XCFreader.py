@@ -25,6 +25,8 @@ class GRun():
         self.Absx = np.array([])
         self.Absy = np.array([])
         self.Pha = np.array([])
+        self.mapGPD = gpd.GPD()   # binning of the maps
+        self.spurious = None      # GPD whose spurious map is subtracted (None = no correction)
         self.FindFiles()
         self.CalculateQUC()
         self.MakeMaps()
@@ -47,11 +49,12 @@ class GRun():
         return sigmaQ, sigmaU
 
     def CalculateQUC(self):
-        """Computes per-event q, u and the total modulation and polarization angle Psi."""
-        self.q = 2*np.cos(2*self.Phi)
-        self.u = 2*np.sin(2*self.Phi)
-        mean_q = np.mean(self.q)
-        mean_u = np.mean(self.u)
+        """Computes the raw per-event q, u and the total (uncorrected) modulation and polarization angle Psi."""
+        self.q_raw = 2*np.cos(2*self.Phi)
+        self.u_raw = 2*np.sin(2*self.Phi)
+        self.q, self.u = self.q_raw, self.u_raw  # MakeMaps applies the spurious correction, if any
+        mean_q = np.mean(self.q_raw)
+        mean_u = np.mean(self.u_raw)
         self.modulation = np.sqrt(mean_q**2 + mean_u**2)
         self.Psi = 0.5*np.arctan2(mean_u, mean_q)
 
@@ -169,7 +172,7 @@ class GRun():
         return self.Psi
 
     def GetQ(self):
-        """Returns the per-event q (spurious corrected)."""
+        """Returns the per-event q (spurious corrected, if a correction is set)."""
         return self.q
 
     def GetQMap(self):
@@ -177,7 +180,7 @@ class GRun():
         return self.Q
 
     def GetU(self):
-        """Returns the per-event u (spurious corrected)."""
+        """Returns the per-event u (spurious corrected, if a correction is set)."""
         return self.u
 
     def GetUMap(self):
@@ -208,27 +211,26 @@ class GRun():
         return centers[RegionOfFit], h[RegionOfFit], params, bounds
 
     def MakeMaps(self, myGPD=None):
-        """Subtracts the spurious modulation of myGPD from q/u and builds the Q, U and counts maps."""
+        """Builds the Q, U, counts maps; a given myGPD becomes the spurious correction (applied once, on the raw q/u)."""
         print("Making Q and U maps")
-        if myGPD is None:
-            myGPD = gpd.GPD()
-        x_, y_, x_range, y_range = myGPD.MapLimits()
+        if myGPD is not None:
+            self.spurious = myGPD
+            self.mapGPD = myGPD
+        # always start again from the raw values: the correction can never be subtracted twice
+        self.q, self.u = self.q_raw, self.u_raw
+        if self.spurious is not None:
+            print("Subtracting spurious modulation map")
+            sp_indices = self._BinIndexes(self.spurious)
+            self.q = self.q_raw - self.spurious.GetQ().ravel()[sp_indices]
+            self.u = self.u_raw - self.spurious.GetU().ravel()[sp_indices]
+
+        x_, y_, _, _ = self.mapGPD.MapLimits()
         nBins = x_*y_
-        q_sp = myGPD.GetQ().reshape(nBins)
-        u_sp = myGPD.GetU().reshape(nBins)
-
-        x_indices = np.digitize(self.Absx, x_range)-1
-        y_indices = np.digitize(self.Absy, y_range)-1
-        self.bin_indices = x_indices * (len(y_range)-1) + y_indices
-        self.q = self.q-q_sp[self.bin_indices]
-        self.u = self.u-u_sp[self.bin_indices]
-
-        # bincount is much faster than np.add.at and sums in the same order;
-        # "% nBins" reproduces numpy's wrap-around of negative indexes
-        flat = self.bin_indices % nBins
-        counts = np.bincount(flat, minlength=nBins).astype(float)
-        q_tot = np.bincount(flat, weights=self.q, minlength=nBins)
-        u_tot = np.bincount(flat, weights=self.u, minlength=nBins)
+        self.bin_indices = self._BinIndexes(self.mapGPD)
+        # bincount is much faster than np.add.at and sums in the same order
+        counts = np.bincount(self.bin_indices, minlength=nBins).astype(float)
+        q_tot = np.bincount(self.bin_indices, weights=self.q, minlength=nBins)
+        u_tot = np.bincount(self.bin_indices, weights=self.u, minlength=nBins)
         filled = counts > 0
         self.Q = np.divide(q_tot, counts, out=np.zeros(nBins), where=filled).reshape(x_, y_)
         self.U = np.divide(u_tot, counts, out=np.zeros(nBins), where=filled).reshape(x_, y_)
@@ -259,8 +261,14 @@ class GRun():
         self._Append([self._ReadEvents(file)])
 
     def RebinAll(self, Nbins):
-        """Rebuilds the maps with Nbins x Nbins bins."""
-        self.MakeMaps(gpd.GPD(mapbins=Nbins))
+        """Rebuilds the maps with Nbins x Nbins bins (a spurious correction already set is kept)."""
+        self.mapGPD = gpd.GPD(mapbins=Nbins)
+        self.MakeMaps()
+
+    def ResetSpurious(self):
+        """Removes the spurious correction and rebuilds the maps from the raw q/u."""
+        self.spurious = None
+        self.MakeMaps()
 
     def StackAllFiles(self):
         """Reads every *.fits file in the directory and stacks the events."""
@@ -288,6 +296,17 @@ class GRun():
         self.Absx = np.concatenate([self.Absx] + [c[1] for c in chunks])
         self.Absy = np.concatenate([self.Absy] + [c[2] for c in chunks])
         self.Pha = np.concatenate([self.Pha] + [c[3] for c in chunks])
+
+    def _BinIndexes(self, grid):
+        """Returns the flat map bin index of each event on the grid of the GPD `grid`."""
+        x_, y_, x_range, y_range = grid.MapLimits()
+        x_indices = np.digitize(self.Absx, x_range)-1
+        y_indices = np.digitize(self.Absy, y_range)-1
+        outside = (x_indices < 0) | (x_indices >= x_) | (y_indices < 0) | (y_indices >= y_)
+        if outside.any():
+            raise ValueError(f'{np.count_nonzero(outside)} events are outside the map (|x| or |y| >= {grid.GetLimits()} mm): '
+                             'use the standard cuts or CutTheEdges() before making the maps')
+        return x_indices * y_ + y_indices
 
     def _FitsFiles(self):
         """Returns the sorted list of *.fits files in the input directory."""

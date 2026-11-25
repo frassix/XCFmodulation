@@ -36,7 +36,7 @@ Standard cuts, applied on reading (`GRun(path, sCut=False)` turns them off):
 | `HotSpot.py` | Modulation inside the beam spot (elliptic cut around the gaussian centre) |
 | `Diagnostic.py` | Q/U maps and q/u distributions before and after the 7 mm edge cut |
 | `XCFdiagnostic.py` | PHA spectrum, with an optional gaussian fit of the peak |
-| `MapComaparison.py` | Compares two spurious maps (ratio, Z compatibility, distributions) |
+| `MapComparison.py` | Compares two spurious maps (ratio, Z compatibility, distributions) |
 | `ShowEqMaps.py` | Shows ASIC equalization maps (`EQ_SLOPE`) and their ratio |
 | `SpMap.fits` | Example spurious map (GPD 35, 300x300 bins) |
 
@@ -69,7 +69,7 @@ python XCFdiagnostic.py --path /data/GPD35/0Deg/ --fit --fit-min 5370 --fit-max 
 ```
 
 ```bash
-python MapComaparison.py --map1 SpMap_low.fits --map2 SpMap_high.fits
+python MapComparison.py --map1 SpMap_low.fits --map2 SpMap_high.fits
 ```
 
 ```bash
@@ -123,7 +123,7 @@ Q_sp, U_sp = sp.MakeSpuriousMap(show=False, save=True)   # -> ./SpMap_MoEn.fits
 gpd = GPD()
 gpd.ReadSpurious('./SpMap_MoEn.fits')
 run2 = GRun('/data/GPD35/45Deg/')
-run2.MakeMaps(gpd)                               # q, u, Q, U are now spurious-subtracted
+run2.MakeMaps(gpd)                               # q, u, Q, U are now spurious-subtracted (only once)
 ```
 
 ## What is computed
@@ -158,5 +158,6 @@ Maps are indexed `[x_bin, y_bin]`. x goes from −7.5 to +7.5 and y from **+7.5 
 
 ## Notes
 
-* `MakeMaps(gpd)` subtracts the spurious map from the **current** q/u. Calling it twice with a non-zero map subtracts it twice. Call `CalculateQUC()` first to start again from the raw values.
-* With `sCut=False`, events outside ±7.5 mm fall outside the map and `MakeMaps` raises an `IndexError` (same as before the refactor).
+* **Spurious correction.** `MakeMaps(gpd)` stores `gpd` as the correction and subtracts its map from the **raw** q/u. Calling it again never subtracts twice. Cuts (`CutUnderPeak`, `EllipticCut`, ...) and `RebinAll` keep the correction. `ResetSpurious()` removes it. `GetModulation()`/`GetPsi()` are always the uncorrected totals.
+* Every event must fall inside the ±7.5 mm map. With `sCut=False`, events outside it raise a clear `ValueError` (use `CutTheEdges()`).
+* The PRIMARY HDU of `SpMap*.fits` stores `μ ± 1σ` of the PHA peak, while the events used are within `μ ± 3σ` (`CutUnderPeak` default).
