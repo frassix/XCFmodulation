@@ -12,6 +12,17 @@ import XCFgpd as gpd
 GAUSSIAN = "[0]*exp(-(x-[1])**2/(2*[2]**2))"
 
 
+def PrintFitsHeaders(path):
+    """Prints every header (primary and extensions) of one FITS file."""
+    print(f'\n===== {path}')
+    with pf.open(path) as hdul:
+        for i, hdu in enumerate(hdul):
+            print(f"\nHeader {i+1} (primary or extension):")
+            for keyword, value in hdu.header.items():
+                print(f"{keyword}: {value}")
+    print()
+
+
 class GRun():
     """One acquisition: events read from FITS files, Stokes q/u per event and binned Q/U maps."""
 
@@ -240,12 +251,7 @@ class GRun():
     def PrintHead(self):
         """Prints every header of the input file(s)."""
         for path in self._FitsFiles() if os.path.isdir(self.path) else [self.path]:
-            print(f'\n===== {path}')
-            with pf.open(path) as hdul:
-                for i, hdu in enumerate(hdul):
-                    print(f"\nHeader {i+1} (primary or extension):")
-                    for keyword, value in hdu.header.items():
-                        print(f"{keyword}: {value}")
+            PrintFitsHeaders(path)
 
     def PrintInfo(self):
         """Prints number of events, live time and maximum PHA."""

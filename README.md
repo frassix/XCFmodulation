@@ -37,7 +37,7 @@ Standard cuts, applied on reading (`GRun(path, sCut=False)` turns them off):
 | `Diagnostic.py` | Q/U maps and q/u distributions before and after the 7 mm edge cut |
 | `XCFdiagnostic.py` | PHA spectrum, with an optional gaussian fit of the peak |
 | `MapComparison.py` | Compares two spurious maps (ratio, Z compatibility, distributions) |
-| `ShowEqMaps.py` | Shows ASIC equalization maps (`EQ_SLOPE`) and their ratio |
+| `ShowEqMaps.py` | `EqMap`: ASIC equalization maps (`EQ_SLOPE` per pixel): map, distribution, column/row projections, ratio of two maps |
 | `SpMap.fits` | Example spurious map (GPD 35, 300x300 bins) |
 
 ## Command line usage
@@ -74,6 +74,10 @@ python MapComparison.py --map1 SpMap_low.fits --map2 SpMap_high.fits
 
 ```bash
 python HotSpot.py --deg0 /data/0Deg/ --deg90 /data/90Deg/ --p --sp-deg0 /data/TMC5/0Deg/ --sp-deg90 /data/TMC5/90Deg/ --spmap SpMap_spot.fits
+```
+
+```bash
+python ShowEqMaps.py flat_A.fits --head --projections
 ```
 
 ```bash
