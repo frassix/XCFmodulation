@@ -30,6 +30,7 @@ Standard cuts, applied on reading (`GRun(path, sCut=False)` turns them off):
 |---|---|
 | `XCFreader.py` | `GRun`: reads a run, applies cuts (PHA peak, edges, ellipse, lines, functions), computes q/u and the Q/U/counts maps |
 | `XCFspurious.py` | `SpuriousMap`: spurious and intrinsic maps from 0°/90° runs, MDP map, saves `SpMap*.fits` (**main script**) |
+| `XCFconjugate.py` | `ConjugateModulation`: kernel elements K<sub>m,0</sub>, K<sub>m,+2</sub>, K<sub>m,−2</sub> (conjugate modulation) from runs at 2 or more polarization angles |
 | `XCFgpd.py` | `GPD`: detector geometry and spurious maps read from file; `Track`: draws single event tracks |
 | `XCFGraph.py` | `GFigure`: small matplotlib wrapper; `GPDMaps`: standard plots of a run |
 | `XCFfit.py` | `GF1`: functions written as strings (`"[0] + [1]*x"`); `GFit`: iterative chi2 fit |
@@ -129,6 +130,77 @@ gpd.ReadSpurious('./SpMap_MoEn.fits')
 run2 = GRun('/data/GPD35/45Deg/')
 run2.MakeMaps(gpd)                               # q, u, Q, U are now spurious-subtracted (only once)
 ```
+
+## Conjugate modulation (`XCFconjugate.py`)
+
+Implements the note *"Extracting the kernel elements from two arbitrary polarization angles"*.
+For harmonic m (2 or 4), the moment of a run at polarization angle θ (detector frame) is
+
+```
+M_m(θ) = <exp(i m φ)> = K_m,0 + A/2 · K_m,+2 · exp(+2iθ) + A/2 · K_m,−2 · exp(−2iθ)
+```
+
+* `K_2,+2` is the modulation factor μ.
+* `K_m,−2` is the **conjugate** term. It is quoted as `r = |K_m,−2| / |K_m,+2|` and `Δψ = arg K_m,+2 − arg K_m,−2`.
+* `K_m,0` is the spurious term.
+* `A` is the polarization degree of the beam.
+
+What is solved depends on the runs you give:
+
+| Runs | Mode | What you need | Result |
+|---|---|---|---|
+| 2 | `known0` (default) | K<sub>m,0</sub> from outside: the spurious map (m = 2) or `--k0` | K<sub>m,±2</sub>, exact inversion of eqs. (34)–(37) |
+| 3 or more | `full` (default) | nothing | K<sub>m,0</sub>, K<sub>m,±2</sub> by weighted least squares, plus χ²/dof when over-determined |
+| 2 | `noconj` | assumes K<sub>m,−2</sub> = 0 (section 9) | K<sub>m,0</sub>, K<sub>m,+2</sub>; with a 90° pair, K<sub>m,0</sub> is exact even if K<sub>m,−2</sub> ≠ 0 |
+
+**Spurious map (m = 2).** With `--spmap`, the map written by `XCFspurious.py` is subtracted **event by event** at each event's position (`K_2,0(x, y) = (Q_SP + i U_SP)/2`). This takes care of the spatial dependence. Its per-bin errors (`QERR`, `UERR`) are propagated as a **systematic**, quoted separately from the statistical error because it does not shrink with more events (section 8). With 3 or more angles, the map is still subtracted and the fitted `K_2,0` is the residual, which should be ≈ 0. That makes it a direct check of the map.
+
+**Angles.** By default `ANGLE` is θ, the beam polarization angle in the detector frame. With `--clocking`, `ANGLE` is the rotation-stage angle χ and `θ = phi_lab − χ` (eq. 4). Moduli and `r` do not depend on the absolute angle, only `Δψ` does (remark 1.2). Choose Δ = 45° and avoid multiples of 90° (no solution) and of 60° (hexagonal lattice). The script prints the noise amplification `G = 1/|sin 2Δ|` and warns about bad choices.
+
+Two angles, using the spurious map for m = 2 and a known K<sub>4,0</sub> (value 0.003 + 0.001i, error 0.0005) for m = 4, with 20×20 maps:
+
+```bash
+python XCFconjugate.py --run 0 /data/GPD35/0Deg/ --run 45 /data/GPD35/45Deg/ --spmap SpMap.fits --harmonics 2 4 --k0 4 0.003 0.001 0.0005 --maps 20
+```
+
+The minimal three-run programme of section 9.2 (0°, 90°, 45°), with nothing taken from outside:
+
+```bash
+python XCFconjugate.py --run 0 /data/0Deg/ --run 90 /data/90Deg/ --run 45 /data/45Deg/ --harmonics 2 4
+```
+
+Check the implementation against the worked example of section 6:
+
+```bash
+python XCFconjugate.py --selftest
+```
+
+Other options: `--A` (polarization degree, default 1), `--mode`, `--no-peak-cut`, `--nsigma`, `--edge-cut`, `--min-counts` (events per run in a map bin), `--target-r R` (events needed to detect r at 3σ, eq. 55), `--no-show`.
+
+In Python:
+
+```python
+from XCFconjugate import ConjugateModulation
+
+cm = ConjugateModulation([(0., '/data/0Deg/'), (45., '/data/45Deg/')],   # (angle [deg], GRun or path)
+                         A=1., harmonics=(2, 4), spmap='SpMap.fits',
+                         k0={4: (0.003+0.001j, 0.0005)})                    # K_4,0 and its error
+cm.SolveAll()                          # prints a table per harmonic
+res = cm.results[2]                    # KernelResult
+print(res.K2, res.Km2)                 # complex K_2,+2 and K_2,-2
+print(res.derived['r'])                # (value, stat, syst)
+print(cm.RequiredEvents(r=0.05, nSigma=3, m=2))
+cm.PlotSummary()                       # phi distributions + reduced moments with the fitted ellipse
+cm.PlotMaps(2, nBins=20).GDraw()       # counts, |K_2,+2|, r, Δψ per bin; GDraw shows all the figures
+```
+
+**What it prints for each harmonic:** Re and Im of every element, plus `|K_m,+2|`, `|K_m,−2|`, `r` and `Δψ`, each with **stat** and **syst** errors. When the system is over-determined it adds χ²/dof. With two angles it also prints `N_cross` (eq. 61), the number of events above which more statistics stops helping because the K<sub>m,0</sub> systematic dominates.
+
+**Statistical errors** come from the measured per-event (co)variance of cos mφ and sin mφ in each run. This is eq. (48) without the isotropic approximation, propagated through the linear solution. For 0°/45° they reproduce the note's Table 2 Monte Carlo (0.0158 for N<sub>tot</sub> = 8000).
+
+**The plots:**
+* **Summary.** The φ distribution of every run with its m = 2, 4 Fourier description. For each harmonic, the reduced moments `d_j` in the complex plane together with the model ellipse `M(θ)`, θ ∈ [0°, 180°), on which every run must lie.
+* **Maps.** The same solution in every bin. Bins with fewer than `--min-counts` events in any run are left empty. In low-count bins `|K_m,−2|` and `r` are biased upward by noise, because a modulus is always positive. Trust the global numbers, and use the maps for spatial trends.
 
 ## What is computed
 

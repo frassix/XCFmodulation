@@ -231,13 +231,13 @@ class GRun():
         self.q, self.u = self.q_raw, self.u_raw
         if self.spurious is not None:
             print("Subtracting spurious modulation map")
-            sp_indices = self._BinIndexes(self.spurious)
+            sp_indices = self.BinIndexes(self.spurious)
             self.q = self.q_raw - self.spurious.GetQ().ravel()[sp_indices]
             self.u = self.u_raw - self.spurious.GetU().ravel()[sp_indices]
 
         x_, y_, _, _ = self.mapGPD.MapLimits()
         nBins = x_*y_
-        self.bin_indices = self._BinIndexes(self.mapGPD)
+        self.bin_indices = self.BinIndexes(self.mapGPD)
         # bincount is much faster than np.add.at and sums in the same order
         counts = np.bincount(self.bin_indices, minlength=nBins).astype(float)
         q_tot = np.bincount(self.bin_indices, weights=self.q, minlength=nBins)
@@ -303,8 +303,8 @@ class GRun():
         self.Absy = np.concatenate([self.Absy] + [c[2] for c in chunks])
         self.Pha = np.concatenate([self.Pha] + [c[3] for c in chunks])
 
-    def _BinIndexes(self, grid):
-        """Returns the flat map bin index of each event on the grid of the GPD `grid`."""
+    def BinIndexes(self, grid):
+        """Returns the flat map bin index (x_bin*nY + y_bin) of each event on the grid of the GPD `grid`."""
         x_, y_, x_range, y_range = grid.MapLimits()
         x_indices = np.digitize(self.Absx, x_range)-1
         y_indices = np.digitize(self.Absy, y_range)-1
