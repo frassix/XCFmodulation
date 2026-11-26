@@ -132,9 +132,11 @@ class GFigure():
         h, b = np.histogram(x, bins=nBins, range=limits, density=normalized)
         return self.AddExternalHist(b, h, alpha=alpha, label=label, position=position)
 
-    def AddMap(self, xy, vmax=0.3, vmin=-0.3, lim=7.5, position=0):
-        """Draws a 2D map xy[x, y] over [-lim, lim] x [-lim, lim]."""
-        return self.axes[position].imshow(xy.T, vmax=vmax, vmin=vmin, extent=[-lim, lim, -lim, lim],
+    def AddMap(self, xy, vmax=0.3, vmin=-0.3, lim=7.5, position=0, extent=None):
+        """Draws a 2D map xy[x, y] (y index 0 at the top) over [-lim, lim]^2, or over extent=[x0, x1, y0, y1]."""
+        if extent is None:
+            extent = [-lim, lim, -lim, lim]
+        return self.axes[position].imshow(xy.T, vmax=vmax, vmin=vmin, extent=extent,
                                           interpolation='nearest', cmap=self.cmap)
 
     def AddPlot(self, x, y, fmt='.', label='Plot', position=0):
