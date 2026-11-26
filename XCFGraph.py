@@ -2,6 +2,7 @@
 import numpy as np
 from cycler import cycler
 from matplotlib import pyplot as plt
+from matplotlib.text import Text
 
 import XCFgpd as gpd
 
@@ -9,8 +10,8 @@ import XCFgpd as gpd
 class GFigure():
     """Figure with a grid of axes; every Add*/Set* method acts on the axes at index `position`."""
 
-    def __init__(self, nRows=1, nColumns=1, shareX=False, shareY=False, figsize=(8, 8), fontsize=16):
-        """Creates the figure with nRows x nColumns axes and the default style."""
+    def __init__(self, nRows=1, nColumns=1, shareX=False, shareY=False, figsize=None, fontsize=16):
+        """Creates the figure with nRows x nColumns axes; figsize=None picks a size that fits the number of panels."""
         plt.ion()
         self.xShape, self.yShape, _, _ = gpd.GPD().MapLimits()
         self.DotSize = 12
@@ -23,8 +24,32 @@ class GFigure():
         self.contour_cmap = 'YlOrRd'
         self.palette = ['#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a']
         self.ResetAround()
-        self.figure, ax = plt.subplots(nrows=nRows, ncols=nColumns, sharex=shareX, sharey=shareY, figsize=figsize)
+        if figsize is None:
+            figsize = (min(5.5*nColumns, 18), min(5*nRows, 10))
+        self._NewFigure(nRows, nColumns, shareX, shareY, figsize)
+
+    def _NewFigure(self, nRows, nColumns, shareX, shareY, figsize):
+        """Creates the matplotlib figure with automatic layout and text that follows the window size."""
+        # 'constrained' layout re-arranges titles, labels and colorbars at every redraw, so they never overlap
+        self.figure, ax = plt.subplots(nrows=nRows, ncols=nColumns, sharex=shareX, sharey=shareY,
+                                       figsize=figsize, layout='constrained')
         self.axes = np.atleast_1d(ax).ravel()
+        self._refSize = self.figure.get_size_inches().copy()
+        self._baseFont = {}
+        # a lambda (not a bound method) keeps the callback alive after this GFigure object is gone
+        self.figure.canvas.mpl_connect('resize_event', lambda event: self._OnResize(event))
+
+    def _OnResize(self, event=None):
+        """Shrinks every text when the window is smaller than the figure size (never enlarges it)."""
+        w, h = self.figure.get_size_inches()
+        scale = min(1., w/self._refSize[0], h/self._refSize[1])
+        tickLabels = set()
+        for ax in self.figure.axes:  # colorbars included
+            tickLabels.update(ax.get_xticklabels(which='both') + ax.get_yticklabels(which='both'))
+            ax.tick_params(labelsize=self.ThicksSize*scale)
+        for text in self.figure.findobj(Text):
+            if text not in tickLabels:
+                text.set_fontsize(self._baseFont.setdefault(text, text.get_fontsize())*scale)
 
     # ---------------------------------------------------------------- style
     def ResetAround(self):
@@ -65,8 +90,9 @@ class GFigure():
 
     # ---------------------------------------------------------------- drawing
     def AddColorBar(self, mapId, label, position=0):
-        """Adds a colorbar for mapId."""
-        cbar = self.figure.colorbar(mapId, ax=self.axes[position], shrink=0.42)
+        """Adds a colorbar for mapId, as tall as the map."""
+        cax = self.axes[position].inset_axes([1.04, 0., 0.05, 1.])  # follows the map box, also with equal aspect
+        cbar = self.figure.colorbar(mapId, cax=cax)
         cbar.set_label(label=label, fontsize=self.FontSize, weight='bold')
 
     def AddContour(self, x, y, z, levels=3, alpha=1, position=0):
@@ -136,7 +162,7 @@ class GFigure():
 
     # ---------------------------------------------------------------- axes
     def ApplyTightLayout(self, pad=1.08, h_pad=None, w_pad=None, rect=None):
-        """Applies matplotlib tight_layout."""
+        """Applies matplotlib tight_layout once (replaces the automatic layout; call it before adding colorbars)."""
         self.figure.tight_layout(pad=pad, h_pad=h_pad, w_pad=w_pad, rect=rect)
 
     def AxesLabels(self, xlabel, ylabel, weight='bold', position=0):
@@ -204,7 +230,7 @@ class GFigure():
 class GPDMaps(GFigure):
     """Standard 3-panel view of a run: counts map, PHA distribution and phi distribution (+ optional projections)."""
 
-    def __init__(self, data, figsize=(8, 8)):
+    def __init__(self, data, figsize=None):
         """Creates the 1x3 figure for the run `data` (a GRun)."""
         super().__init__(1, 3, figsize=figsize)
         self.figsize = figsize
@@ -213,7 +239,6 @@ class GPDMaps(GFigure):
     def __call__(self, projections=True, suptitle='title'):
         """Draws the three panels and, if projections, the X/Y projections figure."""
         self.SetFigureTitle(suptitle=suptitle)
-        self.ApplyTightLayout(pad=5.0, w_pad=3.0)
         self.CountMap()
         self.PhaHist()
         self.PhiHist()
@@ -261,7 +286,7 @@ class GPDMaps(GFigure):
         """Draws the phi distribution in panel 2, with modulation and Psi in the title."""
         self.AddHist(np.degrees(self.data.GetPhi()), nBins, limits, label='Phi2', position=2)
         self.AxesLabels(xlabel='Phi2 [deg]', ylabel='Entries', position=2)
-        self.SetTitle(f'Modulation: {(self.data.GetModulation()*100):.3}% , Psi: {np.degrees(self.data.GetPsi()):.3} deg', position=2)
+        self.SetTitle(f'Modulation: {(self.data.GetModulation()*100):.3}%\nPsi: {np.degrees(self.data.GetPsi()):.3} deg', position=2)
         self.AxesLimits([-180, 180], position=2)
         self.TurnOnGrid(2)
         self.TurnOnLegend(2)
@@ -270,8 +295,7 @@ class GPDMaps(GFigure):
         """Replaces the run and redraws the panels in a new figure."""
         self.data = data
         plt.close(self.figure)
-        self.figure, ax = plt.subplots(1, 3, figsize=self.figsize)
-        self.axes = np.atleast_1d(ax).ravel()
+        self._NewFigure(1, 3, False, False, self._refSize)
         self.__call__()
 
 

@@ -231,7 +231,7 @@ class SpuriousMap():
             mapId = ErrorCanvas.AddMap(E, vmin=-0.3, vmax=0.3, lim=7.5, position=position)
             ErrorCanvas.AddColorBar(mapId, rf'$\sigma_{S}$', position=position)
             ErrorCanvas.AxesLabels(xlabel='X [mm]', ylabel='Y [mm]', position=position)
-            ErrorCanvas.SetTitle(rf'${S}_{{{name}}}\, error map$', position=position)
+            ErrorCanvas.SetTitle(rf'${S}_{{{name}}}$ error map', position=position)
 
         for Z, E, S in ((Q, Q_err, 'Q'), (U, U_err, 'U')):
             Canvas = GFigure(1, 2)
